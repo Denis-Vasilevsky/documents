@@ -1,3 +1,6 @@
+-- установка формата даты
+ALTER SESSION SET NLS_DATE_FORMAT = 'DD.MM.YYYY';
+
 -- генерация случайной даты в диапазоне
 CREATE OR REPLACE FUNCTION gen_date
 ( 
@@ -8,7 +11,7 @@ CREATE OR REPLACE FUNCTION gen_date
 IS
     random_date DATE;
 BEGIN
-    random_date := TO_DATE(TO_DATE(end_date_in, 'DD.MM.YYYY') - FLOOR(dbms_random.value * (TO_NUMBER(TO_DATE(end_date_in, 'DD.MM.YYYY') - TO_DATE(start_date_in, 'DD.MM.YYYY') + 1))), 'DD.MM.YY');
+    random_date := TO_DATE(TO_DATE(end_date_in, 'DD.MM.YYYY') - FLOOR(dbms_random.value * (TO_NUMBER(TO_DATE(end_date_in, 'DD.MM.YYYY') - TO_DATE(start_date_in, 'DD.MM.YYYY') + 1))), 'DD.MM.YYYY');
     RETURN random_date;
 END;
 
