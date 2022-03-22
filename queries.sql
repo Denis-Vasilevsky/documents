@@ -174,15 +174,24 @@ GROUP BY
 -- 5.3 Выбор списка: клиент, кол-во валют документов
 SELECT
     "Clients"."client_name",
-    "Currencies"."currency_ISO_name",
     COUNT(*)
 FROM
-         "Clients"
-    INNER JOIN "Documents" ON "Documents"."client_id" = "Clients"."client_id"
-    INNER JOIN "Currencies" ON "Documents"."currency_id" = "Currencies"."currency_id"
+    "Documents"
+    LEFT JOIN "Clients" ON "Clients"."client_id" = "Documents"."client_id"
 GROUP BY
+    "Clients"."client_name"
+
+-- 5.3.1 Выбор списка 5.3 для клиентов у которых есть документы в 3х или 4х различных валютах
+SELECT
     "Clients"."client_name",
-    "Currencies"."currency_ISO_name";
+    COUNT(*)
+FROM
+    "Documents"
+    LEFT JOIN "Clients" ON "Clients"."client_id" = "Documents"."client_id"
+GROUP BY
+    "Clients"."client_name"
+HAVING COUNT(*) = 3
+       OR COUNT(*) = 4
 
 -- 5.4 Выбор списка: клиент, валюта, общая сумма в валюте
 SELECT
@@ -197,21 +206,24 @@ GROUP BY
     "Clients"."client_name",
     "Currencies"."currency_ISO_name";
 
--- поиск курса валют по ближайшей дате
+-- 7.2 поиск курса валют по ближайшей дате
 CREATE OR REPLACE FUNCTION search_exchange_rate (
-    p_date IN CHAR
+    p_currency_id IN INTEGER,
+    p_date        IN CHAR
 ) RETURN NUMBER IS
 
-    cnumber NUMBER;
+    course FLOAT;
     CURSOR c1 IS
     SELECT
-        *
+        "exchange_rate"
     FROM
         (
             SELECT
-                "exchange_rate_id"
+                "exchange_rate"
             FROM
                 "Exchange_rates"
+            WHERE
+                "currency_id" = p_currency_id
             ORDER BY
                 abs(to_date(p_date, 'DD.MM.YYYY') - to_date("Exchange_rates"."start_date_exchange_rate", 'DD.MM.YYYY'))
         )
@@ -220,41 +232,44 @@ CREATE OR REPLACE FUNCTION search_exchange_rate (
 
 BEGIN
     OPEN c1;
-    FETCH c1 INTO cnumber;
+    FETCH c1 INTO course;
     IF c1%notfound THEN
-        cnumber := -1;
+        RETURN NULL;
     END IF;
     CLOSE c1;
-    RETURN cnumber;
+    RETURN course;
 END;
 
 SELECT
-    *
+    search_exchange_rate(840, '10.10.2030')
 FROM
-    "Exchange_rates"
-WHERE
-    "exchange_rate_id" = search_exchange_rate('20.10.2005');
+    dual;
 
 
 -- заполнение таблицы валют
 BEGIN
-    insert_new_currency(p_currency_id => 112, p_currency_iso_name => 'BYB', p_currency_name => 'Belarussian Ruble', p_start_date => '25.05.1992',
-    p_end_date => '01.01.2000');
+    insert_new_currency(p_currency_id => 112, p_currency_iso_name => 'BYB', p_currency_name => 'Belarussian Ruble',
+                        p_start_date => '25.05.1992',
+                        p_end_date => '01.01.2000');
 
-    insert_new_currency(p_currency_id => 974, p_currency_iso_name => 'BYR', p_currency_name => 'Belarussian Ruble', p_start_date => '01.01.2000',
-    p_end_date => '01.07.2016',
-                       p_old_currency_id => 112, p_scale_denomination => 1000);
+    insert_new_currency(p_currency_id => 974, p_currency_iso_name => 'BYR', p_currency_name => 'Belarussian Ruble',
+                        p_start_date => '01.01.2000',
+                        p_end_date => '01.07.2016',
+                        p_old_currency_id => 112, p_scale_denomination => 1000);
 
-    insert_new_currency(p_currency_id => 933, p_currency_iso_name => 'BYN', p_currency_name => 'Belarusian Ruble', p_start_date => '01.07.2016',
-    p_old_currency_id => 974,
-                       p_sign_national_currency => 1, p_scale_denomination => 10000);
+    insert_new_currency(p_currency_id => 933, p_currency_iso_name => 'BYN', p_currency_name => 'Belarusian Ruble',
+                        p_start_date => '01.07.2016',
+                        p_old_currency_id => 974,
+                        p_sign_national_currency => 1, p_scale_denomination => 10000);
 
-    insert_new_currency(p_currency_id => 810, p_currency_iso_name => 'RUR', p_currency_name => 'Russian Ruble', p_start_date => '01.01.1992',
-    p_end_date => '01.01.1998');
+    insert_new_currency(p_currency_id => 810, p_currency_iso_name => 'RUR', p_currency_name => 'Russian Ruble',
+                        p_start_date => '01.01.1992',
+                        p_end_date => '01.01.1998');
 
-    insert_new_currency(p_currency_id => 643, p_currency_iso_name => 'RUB', p_currency_name => 'Russian Ruble', p_start_date => '01.01.1998',
-    p_old_currency_id => 810,
-                       p_scale_denomination => 1000);
+    insert_new_currency(p_currency_id => 643, p_currency_iso_name => 'RUB', p_currency_name => 'Russian Ruble',
+                        p_start_date => '01.01.1998',
+                        p_old_currency_id => 810,
+                        p_scale_denomination => 1000);
 
     insert_new_currency(p_currency_id => 840, p_currency_iso_name => 'USD', p_currency_name => 'US Dollar');
     insert_new_currency(p_currency_id => 978, p_currency_iso_name => 'EUR', p_currency_name => 'Euro');
@@ -266,92 +281,55 @@ END;
 
 -- заполнение таблицы курсов валют
 BEGIN
-    insert_new_exchange_rate(p_exchange_rate_id => 1, p_currency_id => 840, p_exchange_rate => 2.5759, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 1, p_currency_id => 840, p_exchange_rate => 2.5759,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 2, p_currency_id => 978, p_exchange_rate => 3.168, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 2, p_currency_id => 978, p_exchange_rate => 3.168,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 3, p_currency_id => 643, p_exchange_rate => 3.4871, p_exchange_rate_scale => 100, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 3, p_currency_id => 643, p_exchange_rate => 3.4871,
+                             p_exchange_rate_scale => 100, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 4, p_currency_id => 826, p_exchange_rate => 3.5016, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 4, p_currency_id => 826, p_exchange_rate => 3.5016,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 5, p_currency_id => 156, p_exchange_rate => 3.9515, p_exchange_rate_scale => 10, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 5, p_currency_id => 156, p_exchange_rate => 3.9515,
+                             p_exchange_rate_scale => 10, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 6, p_currency_id => 756, p_exchange_rate => 2.9147, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2021');
+    insert_new_exchange_rate(p_exchange_rate_id => 6, p_currency_id => 756, p_exchange_rate => 2.9147,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2021');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 7, p_currency_id => 840, p_exchange_rate => 2.5481, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 7, p_currency_id => 840, p_exchange_rate => 2.5481,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 8, p_currency_id => 978, p_exchange_rate => 2.8826, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 8, p_currency_id => 978, p_exchange_rate => 2.8826,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 9, p_currency_id => 643, p_exchange_rate => 3.4322, p_exchange_rate_scale => 100, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 9, p_currency_id => 643, p_exchange_rate => 3.4322,
+                             p_exchange_rate_scale => 100, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 10, p_currency_id => 826, p_exchange_rate => 3.4295, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 10, p_currency_id => 826, p_exchange_rate => 3.4295,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 11, p_currency_id => 156, p_exchange_rate => 3.9978, p_exchange_rate_scale => 10, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 11, p_currency_id => 156, p_exchange_rate => 3.9978,
+                             p_exchange_rate_scale => 10, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
-    insert_new_exchange_rate(p_exchange_rate_id => 12, p_currency_id => 756, p_exchange_rate => 2.7759, p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
-    '01.01.2022');
+    insert_new_exchange_rate(p_exchange_rate_id => 12, p_currency_id => 756, p_exchange_rate => 2.7759,
+                             p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                 '01.01.2022');
 
 END;
-
--- пересчёт суммы к указанной валюте на дату
-CREATE OR REPLACE FUNCTION recalculate_currencies (
-    p_transferred_currency_id INTEGER,
-    p_received_currency_id INTEGER,
-    p_transfer_amount FLOAT,
-    p_course_date DATE
-) RETURN FLOAT IS
-    transferred_currency_id INTEGER := p_transferred_currency_id;
-    received_currency_id INTEGER := p_received_currency_id;
-    transfer_amount FLOAT := p_transfer_amount;
-    course_date DATE := p_course_date;
-
-    transferred_course FLOAT;
-    transferred_scale FLOAT;
-    transferred_sign_national INTEGER;
-    transferred_precision INTEGER;
-
-    received_course FLOAT;
-    received_scale FLOAT;
-    received_sign_national INTEGER;
-    received_precision INTEGER;
-
-    result FLOAT;
-BEGIN
-
-    select "sign_national_currency", "precision" into transferred_sign_national, transferred_precision from "Currencies" where "currency_id" = transferred_currency_id;
-    select "sign_national_currency", "precision" into received_sign_national, received_precision from "Currencies" where "currency_id" = received_currency_id;
-
-    if (transferred_sign_national = 1 and received_sign_national = 1) or transferred_currency_id = received_currency_id then
-        result := transfer_amount;
-
-    ELSIF transferred_sign_national = 1 and received_sign_national = 0 then
-        select "exchange_rate", "exchange_rate_scale" into received_course, received_scale from "Exchange_rates" where "start_date_exchange_rate" = course_date and "currency_id" = received_currency_id;
-        result := ROUND(transfer_amount / ROUND(received_course,received_precision) * received_scale, transferred_precision);
-
-    ELSIF transferred_sign_national = 0 and received_sign_national = 1 then
-        select "exchange_rate", "exchange_rate_scale" into transferred_course, transferred_scale from "Exchange_rates" where "start_date_exchange_rate" = course_date and "currency_id" = transferred_currency_id;
-        result := ROUND(ROUND(transferred_course, transferred_precision) * transfer_amount / transferred_scale, transferred_precision);
-
-    else
-        select "exchange_rate", "exchange_rate_scale" into transferred_course, transferred_scale from "Exchange_rates" where "start_date_exchange_rate" = course_date and "currency_id" = transferred_currency_id;
-        select "exchange_rate", "exchange_rate_scale" into received_course, received_scale from "Exchange_rates" where "start_date_exchange_rate" = course_date and "currency_id" = received_currency_id;
-        result := ROUND(ROUND(transferred_course,transferred_precision) * transfer_amount / transferred_scale * received_scale / received_course, received_precision);
-    end if;
-
-    return result;
-
-end;
 
 -- триггер контроля принадлежности к национальной валюте
 CREATE OR REPLACE TRIGGER check_nation_currency
@@ -380,3 +358,182 @@ SELECT
 FROM
     "Documents" d
     LEFT JOIN "Currencies" c ON d."currency_id" = c."currency_id";
+
+-- 7.2
+-- получить самую новую валюту
+CREATE OR REPLACE FUNCTION search_currency(
+    p_currency_id IN INTEGER
+) RETURN INTEGER IS
+    id_1         INTEGER;
+    id_2         INTEGER;
+    result       INTEGER;
+BEGIN
+    id_1 := get_currency_by_old_id(p_currency_id);
+    IF id_1 = -1 THEN
+        result := p_currency_id;
+    ELSE
+        LOOP
+            id_2 := id_1;
+            result := get_currency_by_old_id(id_1);
+            IF result = -1 THEN
+                result := id_2;
+                EXIT;
+            END IF;
+            id_1 := result;
+        END LOOP;
+    END IF;
+
+    RETURN result;
+END;
+
+-- найти деноминацию
+CREATE OR REPLACE FUNCTION get_denomination(
+    p_currency_id IN INTEGER
+) RETURN INTEGER IS
+    id_1         INTEGER;
+    id_2         INTEGER;
+    result       INTEGER;
+    denomination FLOAT := 1;
+    d            FLOAT;
+BEGIN
+    id_1 := get_currency_by_old_id(p_currency_id);
+    IF id_1 = -1 THEN
+        result := p_currency_id;
+    ELSE
+        LOOP
+            id_2 := id_1;
+            SELECT "scale_denomination"
+            INTO d
+            FROM "Currencies"
+            WHERE "currency_id" = id_2;
+
+            denomination := denomination * d;
+            result := get_currency_by_old_id(id_1);
+            IF result = -1 THEN
+                result := id_2;
+                EXIT;
+            END IF;
+            id_1 := result;
+        END LOOP;
+    END IF;
+
+    RETURN denomination;
+END;
+
+-- найти валюту по коду старой валюты
+CREATE OR REPLACE FUNCTION get_currency_by_old_id(
+    p_old_id IN INTEGER
+) RETURN INTEGER IS
+    id INTEGER;
+BEGIN
+    SELECT "currency_id"
+    INTO id
+    FROM "Currencies"
+    WHERE "old_currency_id" = p_old_id;
+
+    RETURN id;
+EXCEPTION
+    WHEN no_data_found THEN
+        RETURN -1;
+END;
+
+-- пересчёт суммы к указанной валюте на дату
+CREATE OR REPLACE FUNCTION recalculate_currencies(
+    p_transferred_currency_id INTEGER,
+    p_received_currency_id INTEGER,
+    p_transfer_amount FLOAT,
+    p_course_date DATE
+) RETURN FLOAT IS
+    transferred_currency_id   INTEGER := p_transferred_currency_id;
+    received_currency_id      INTEGER := p_received_currency_id;
+    transfer_amount           FLOAT   := p_transfer_amount;
+    course_date               DATE    := p_course_date;
+    transferred_course        FLOAT;
+    transferred_scale         FLOAT;
+    transferred_sign_national INTEGER;
+    transferred_precision     INTEGER;
+    received_course           FLOAT;
+    received_scale            FLOAT;
+    received_sign_national    INTEGER;
+    received_precision        INTEGER;
+    id_1                      INTEGER;
+    id_2                      INTEGER;
+    d_1                       float;
+    d_2                       float;
+    result                    FLOAT;
+BEGIN
+    if transferred_currency_id = received_currency_id then
+        result := transfer_amount;
+    end if;
+
+    id_1 := search_currency(transferred_currency_id);
+    id_2 := search_currency(received_currency_id);
+    d_1 := get_denomination(transferred_currency_id);
+    d_2 := get_denomination(received_currency_id);
+
+    if id_1 = id_2 then
+        result := transfer_amount / d_1 * d_2;
+    end if;
+
+    select "sign_national_currency", "precision"
+    into transferred_sign_national, transferred_precision
+    from "Currencies"
+    where "currency_id" = id_1;
+    select "sign_national_currency", "precision"
+    into received_sign_national, received_precision
+    from "Currencies"
+    where "currency_id" = id_2;
+
+    IF transferred_sign_national = 1 and received_sign_national = 0 then
+        select "exchange_rate", "exchange_rate_scale"
+        into received_course, received_scale
+        from "Exchange_rates"
+        where "start_date_exchange_rate" = course_date
+          and "currency_id" = id_2;
+        result := ROUND(transfer_amount / d_1 / ROUND(received_course, received_precision) * received_scale * d_2,
+                        transferred_precision);
+
+
+    elsIF transferred_sign_national = 0 and received_sign_national = 1 then
+        select "exchange_rate", "exchange_rate_scale"
+        into transferred_course, transferred_scale
+        from "Exchange_rates"
+        where "start_date_exchange_rate" = course_date
+          and "currency_id" = id_1;
+        result := ROUND(ROUND(transferred_course, transferred_precision) * transfer_amount / transferred_scale / d_1 *
+                        d_2, transferred_precision);
+
+    elsIF transferred_sign_national = 0 and received_sign_national = 0 then
+        select "exchange_rate", "exchange_rate_scale"
+        into transferred_course, transferred_scale
+        from "Exchange_rates"
+        where "start_date_exchange_rate" = course_date
+          and "currency_id" = id_1;
+        select "exchange_rate", "exchange_rate_scale"
+        into received_course, received_scale
+        from "Exchange_rates"
+        where "start_date_exchange_rate" = course_date
+          and "currency_id" = id_2;
+        result := ROUND(ROUND(transferred_course, transferred_precision) * transfer_amount / transferred_scale *
+                        received_scale / received_course / d_1 * d_2, received_precision);
+    end if;
+
+    return result;
+
+end;
+
+select recalculate_currencies(978, 974, 1, '01.01.2022')
+from dual
+
+-- примеры
+-- 1 000 BYR -> BYN 01.01.2022
+select recalculate_currencies(974, 933, 1000, '01.01.2022') from dual;
+-- 1 BYN -> BYR 01.01.2022
+select recalculate_currencies(933, 974, 1, '01.01.2022') from dual;
+-- 1 000 000 BYB -> BYN 01.01.2022
+select recalculate_currencies(112, 933, 1000000, '01.01.2022') from dual;
+
+-- 1 000  EUR -> USD 01.01.2022
+select recalculate_currencies(978, 840, 1000, '01.01.2022') from dual;
+-- 100 USD -> BYN 01.01.2022
+select recalculate_currencies(840, 933, 100, '01.01.2022') from dual;
