@@ -359,7 +359,7 @@ FROM
     "Documents" d
     LEFT JOIN "Currencies" c ON d."currency_id" = c."currency_id";
 
--- 7.2
+-- 8 перевод валюты
 -- получить самую новую валюту
 CREATE OR REPLACE FUNCTION search_currency(
     p_currency_id IN INTEGER
