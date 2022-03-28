@@ -184,14 +184,14 @@ GROUP BY
 -- 5.3.1 Выбор списка 5.3 для клиентов у которых есть документы в 3х или 4х различных валютах
 SELECT
     "Clients"."client_name",
-    COUNT(*)
+    COUNT(distinct "Documents"."currency_id")
 FROM
     "Documents"
     LEFT JOIN "Clients" ON "Clients"."client_id" = "Documents"."client_id"
 GROUP BY
     "Clients"."client_name"
-HAVING COUNT(*) = 3
-       OR COUNT(*) = 4
+HAVING COUNT(distinct "Documents"."currency_id") = 3
+       OR COUNT(distinct "Documents"."currency_id") = 4
 
 -- 5.4 Выбор списка: клиент, валюта, общая сумма в валюте
 SELECT
@@ -341,7 +341,7 @@ declare
 BEGIN
     select count(*) into counts from "Currencies" where "sign_national_currency" = 1;
     if counts != 0 and :NEW."sign_national_currency" = 1 then
-        :NEW."sign_national_currency" := 0;
+        RAISE_APPLICATION_ERROR(-20000, 'national currency sign 1 is already exists');
     end if;
 END;
 
@@ -537,3 +537,54 @@ select recalculate_currencies(112, 933, 1000000, '01.01.2022') from dual;
 select recalculate_currencies(978, 840, 1000, '01.01.2022') from dual;
 -- 100 USD -> BYN 01.01.2022
 select recalculate_currencies(840, 933, 100, '01.01.2022') from dual;
+
+-- 10 заполнение таблицы курсов валют
+CREATE OR REPLACE PROCEDURE fill_exchange_rates(p_start_date IN DATE, p_end_date IN DATE) is
+    i INTEGER := 0;
+begin
+    loop
+        if (to_number(to_char((to_date(p_start_date) + i), 'D')) != 6 and to_number(to_char((to_date(p_start_date) + i), 'D')) != 7) then
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 0, p_currency_id => 840,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 1, p_currency_id => 978,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 2, p_currency_id => 643,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 100, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 3, p_currency_id => 826,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 4, p_currency_id => 156,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 10, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+
+            insert_new_exchange_rate(p_exchange_rate_id => i * 6 + 5, p_currency_id => 756,
+                                     p_exchange_rate => dbms_random.value,
+                                     p_exchange_rate_scale => 1, p_start_date_exchange_rate =>
+                                         to_date(p_start_date + i));
+        end if;
+
+        i := i + 1;
+        if i = to_date(p_end_date) - to_date(p_start_date) then
+            exit;
+        end if;
+
+    end loop;
+
+end fill_exchange_rates;
+
+-- заполнение от 01.01.1990 до 31.12.2021
+begin
+    fill_exchange_rates('01.01.1990', '31.12.2021');
+end;
