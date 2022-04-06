@@ -333,17 +333,33 @@ END;
 
 -- триггер контроля принадлежности к национальной валюте
 CREATE OR REPLACE TRIGGER check_nation_currency
-    BEFORE INSERT or UPDATE
-    ON "Currencies"
-    FOR EACH ROW
-declare
-    counts NUMBER;
-BEGIN
-    select count(*) into counts from "Currencies" where "sign_national_currency" = 1;
-    if counts != 0 and :NEW."sign_national_currency" = 1 then
-        RAISE_APPLICATION_ERROR(-20000, 'national currency sign 1 is already exists');
-    end if;
-END;
+    FOR UPDATE OR INSERT ON "Currencies"
+    COMPOUND TRIGGER
+
+    sign_national_currency_count NUMBER;
+
+    PROCEDURE set_0 IS
+    BEGIN
+        IF sign_national_currency_count != 0 AND :new."sign_national_currency" = 1
+        THEN
+            raise_application_error(-20000, 'national currency sign 1 is already exists');
+        END IF;
+    END;
+
+    BEFORE STATEMENT IS
+    BEGIN
+        SELECT COUNT(*)
+        INTO sign_national_currency_count
+        FROM "Currencies"
+        WHERE "sign_national_currency" = 1;
+    END BEFORE STATEMENT;
+
+    BEFORE EACH ROW IS
+    BEGIN
+        set_0;
+    END BEFORE EACH ROW;
+
+END check_nation_currency;
 
 
 -- вывод документов и стоимости в USD и BYN
