@@ -604,3 +604,107 @@ end fill_exchange_rates;
 begin
     fill_exchange_rates('01.01.1990', '31.12.2021');
 end;
+
+-- 12
+create or replace package pk as
+    type r_course is record
+                     (
+                         "currency_id"              INTEGER,
+                         "start_date_exchange_rate" DATE,
+                         "exchange_rate"            FLOAT
+                     );
+    type t_course is table of r_course index by pls_integer;
+
+    -- поиск курса
+    FUNCTION search_course(
+        p_currency_id IN INTEGER,
+        p_date IN CHAR
+    ) RETURN NUMBER;
+
+    -- вывод количества записей в кеше
+    procedure console;
+
+    -- очистка кеша
+    procedure clear;
+end pk;
+
+create or replace package body pk as
+    t t_course;
+
+    FUNCTION search_course(
+        p_currency_id IN INTEGER,
+        p_date IN CHAR
+    ) RETURN NUMBER is
+        currency number;
+        date_    Date;
+        course   number := -1;
+        i        number;
+
+    begin
+        for i in 1 .. t.COUNT
+            loop
+                if  p_currency_id = t(1)."currency_id" or p_date = t(i)."start_date_exchange_rate"  then
+                    course := t(i)."exchange_rate";
+                    exit;
+                end if;
+            end loop;
+        if course = -1 then
+            select "currency_id", "start_date_exchange_rate", "exchange_rate"
+            into currency, date_, course
+            from (
+                     SELECT "currency_id", "start_date_exchange_rate", "exchange_rate"
+                     FROM "Exchange_rates"
+                     WHERE "currency_id" = p_currency_id
+                     ORDER BY abs(to_date(p_date, 'DD.MM.YYYY') -
+                                  to_date("Exchange_rates"."start_date_exchange_rate", 'DD.MM.YYYY')))
+            WHERE ROWNUM = 1;
+            i := t.COUNT + 1;
+            t(i)."currency_id" := p_currency_id;
+            t(i)."start_date_exchange_rate" := p_date;
+            t(i)."exchange_rate" := course;
+        end if;
+        return course;
+    EXCEPTION
+        WHEN no_data_found THEN
+            RETURN -1;
+    end;
+
+    procedure console is
+    begin
+        DBMS_OUTPUT.PUT_LINE(t.COUNT);
+    end;
+
+    procedure clear is
+    begin
+        t.DELETE();
+    end;
+
+
+end pk;
+
+-- вывод обычной функцией
+SELECT d."document_id",
+       d."amount",
+       d."currency_id",
+       d."document_Date",
+       search_exchange_rate(d."currency_id", d."document_Date")
+FROM "Documents" d
+
+-- вывод функцией с кешем
+SELECT d."document_id",
+       d."amount",
+       d."currency_id",
+       d."document_Date",
+       pk.search_course(d."currency_id", d."document_Date")
+FROM "Documents" d
+
+
+-- вывод количества записей
+begin
+    pk.console();
+end;
+
+-- очистка кеша
+begin
+    pk.clear();
+end;
